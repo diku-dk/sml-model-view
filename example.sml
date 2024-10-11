@@ -22,9 +22,31 @@ val pollOut = OS.IO.pollOut o valOf o OS.IO.pollDesc o Posix.FileSys.fdToIOD
 fun forever f =
   (f (); forever f)
 
+type ModelMsg = string * int
+
+val puModelMsg: ModelMsg Pickle.pu = Pickle.pairGen (Pickle.string, Pickle.int)
+
+val pickleModelMsg = String.toString o Pickle.pickle puModelMsg
+
+val unpickleModelMsg = Pickle.unpickle puModelMsg o valOf o String.fromString
+
+type ViewMsg = string
+
+val puViewMsg: ViewMsg Pickle.pu = Pickle.string
+
+val pickleViewMsg = String.toString o Pickle.pickle puViewMsg
+
+val unpickleViewMsg = Pickle.unpickle puViewMsg o valOf o String.fromString
+
+fun strinit s =
+  String.substring (s, 0, size s - 1)
+
 fun modelProc (inf_fd, inf) (outf_fd, outf) =
   let
     val in_poll = pollIn inf_fd
+    fun handleMsg s =
+      print ("model: received: " ^ s ^ "\n")
+    val getMsg = unpickleViewMsg o strinit o valOf o TextIO.inputLine
     fun read () =
       case OS.IO.poll ([in_poll], SOME (Time.fromSeconds 0)) of
         [] => ()
@@ -33,20 +55,17 @@ fun modelProc (inf_fd, inf) (outf_fd, outf) =
             fun loop () =
               case TextIO.canInput (inf, 1) of
                 NONE => ()
-              | SOME x =>
-                  ( print ("model: received: " ^ valOf (TextIO.inputLine inf))
-                  ; loop ()
-                  )
+              | SOME x => (handleMsg (getMsg inf); loop ())
           in
             loop ()
           end
+    val state = ref 0
     fun react () =
-      let
-        val () = TextIO.output (outf, "status update\n")
-        val () = read ()
-      in
-        OS.Process.sleep (Time.fromSeconds 5)
-      end
+      ( TextIO.output (outf, pickleModelMsg ("state", !state) ^ "\n")
+      ; read ()
+      ; state := !state + 1
+      ; OS.Process.sleep (Time.fromSeconds 5)
+      )
   in
     forever react
   end
@@ -57,15 +76,23 @@ fun viewProc (inf_fd, inf) (outf_fd, outf) =
     val out_poll = pollOut outf_fd
     val pending = ref []
     val stdin_poll = pollIn Posix.FileSys.stdin
+
+    fun handleMsg (prop, value) =
+      print ("view: " ^ prop ^ " = " ^ Int.toString value ^ "\n")
+
+    val getMsg = unpickleModelMsg o strinit o valOf o TextIO.inputLine
+
     fun onPoll ready =
       if OS.IO.infoToPollDesc ready = in_poll then
-        (print "view: received: "; print (valOf (TextIO.inputLine inf)))
+        handleMsg (getMsg inf)
       else if OS.IO.infoToPollDesc ready = stdin_poll then
         case TextIO.inputLine TextIO.stdIn of
           NONE => raise Fail "stdin closed"
         | SOME l => pending := (l :: !pending)
       else if OS.IO.infoToPollDesc ready = out_poll then
-        ( List.app (fn l => TextIO.output (outf, l)) (!pending)
+        ( List.app
+            (fn l => TextIO.output (outf, pickleViewMsg (strinit l) ^ "\n"))
+            (!pending)
         ; pending := []
         ; TextIO.flushOut outf
         )

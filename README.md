@@ -9,3 +9,8 @@ process. These communicate via pipes. Some care must be taken to
 ensure that the view process is never blocked, as this would freeze
 the user interface.
 
+## Trying it out
+
+`$ make run`
+
+Enter lines of input as you wish.
