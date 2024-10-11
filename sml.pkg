@@ -1,3 +1,5 @@
+package github.com/diku-dk/sml-model-view
+
 require {
   github.com/diku-dk/sml-pickle 0.1.0 #e9a405deb48865cc5ca1cea6fd8e79fbf9fc8851
 }

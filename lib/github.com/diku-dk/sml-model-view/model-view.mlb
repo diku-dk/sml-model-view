@@ -1,0 +1,6 @@
+local $(SML_LIB)/basis/basis.mlb
+      ../sml-pickle/pickle.mlb
+in
+      channel.sig
+      channel.sml
+end

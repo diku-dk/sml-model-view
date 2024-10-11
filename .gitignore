@@ -1,3 +1,5 @@
 example
 MLB
-lib
+.#*
+lib/github.com/diku-dk/sml-pickle
+lib/github.com/diku-dk/sml-hashtable
