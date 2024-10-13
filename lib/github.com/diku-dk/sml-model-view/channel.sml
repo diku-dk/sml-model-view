@@ -1,4 +1,4 @@
-structure Channel: CHANNEL =
+structure Channel :> CHANNEL =
 struct
   fun strinit s =
     String.substring (s, 0, size s - 1)
