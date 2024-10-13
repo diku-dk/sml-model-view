@@ -84,7 +84,10 @@ fun viewProc input output =
         case TextIO.input1 TextIO.stdIn of
           NONE => raise Stop
         | SOME #"q" => raise Stop
-        | SOME c => (print (str c ^ "\n"); pending := (str c :: !pending))
+        | SOME c =>
+            ( if Char.isPrint c then print (str c ^ "\n") else ()
+            ; pending := (str c :: !pending)
+            )
       else if OS.IO.infoToPollDesc ready = out_poll then
         (List.app (fn l => Channel.send output l) (!pending); pending := [])
       else
