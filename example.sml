@@ -1,6 +1,29 @@
 fun strinit s =
   String.substring (s, 0, size s - 1)
 
+fun noncanon () =
+  let
+    val oldattr = Posix.TTY.TC.getattr Posix.FileSys.stdin
+    val {iflag, oflag, cflag, lflag, cc, ispeed, ospeed} =
+      Posix.TTY.fieldsOf oldattr
+    val lflag = Posix.TTY.L.clear
+      (lflag, Posix.TTY.L.flags [Posix.TTY.L.echo, Posix.TTY.L.icanon])
+    val newattr = Posix.TTY.termios
+      { iflag = iflag
+      , oflag = oflag
+      , cflag = cflag
+      , lflag = lflag
+      , cc = cc
+      , ispeed = ispeed
+      , ospeed = ospeed
+      }
+    val () =
+      Posix.TTY.TC.setattr (Posix.FileSys.stdin, Posix.TTY.TC.sanow, newattr)
+  in
+    fn () =>
+      Posix.TTY.TC.setattr (Posix.FileSys.stdin, Posix.TTY.TC.sanow, oldattr)
+  end
+
 val pollIn = OS.IO.pollIn o valOf o OS.IO.pollDesc o Posix.FileSys.fdToIOD
 val pollOut = OS.IO.pollOut o valOf o OS.IO.pollDesc o Posix.FileSys.fdToIOD
 
@@ -46,11 +69,11 @@ fun modelProc input output =
 
 fun viewProc input output =
   let
+    exception Stop
     val in_poll = Channel.pollIn input
     val out_poll = Channel.pollOut output
-    val pending = ref []
     val stdin_poll = pollIn Posix.FileSys.stdin
-
+    val pending = ref []
     fun handleMsg (prop, value) =
       print ("view: " ^ prop ^ " = " ^ Int.toString value ^ "\n")
 
@@ -58,13 +81,12 @@ fun viewProc input output =
       if OS.IO.infoToPollDesc ready = in_poll then
         handleMsg (Channel.receive input)
       else if OS.IO.infoToPollDesc ready = stdin_poll then
-        case TextIO.inputLine TextIO.stdIn of
-          NONE => raise Fail "stdin closed"
-        | SOME l => pending := (l :: !pending)
+        case TextIO.input1 TextIO.stdIn of
+          NONE => raise Stop
+        | SOME #"q" => raise Stop
+        | SOME c => (print (str c ^ "\n"); pending := (str c :: !pending))
       else if OS.IO.infoToPollDesc ready = out_poll then
-        ( List.app (fn l => Channel.send output (strinit l)) (!pending)
-        ; pending := []
-        )
+        (List.app (fn l => Channel.send output l) (!pending); pending := [])
       else
         ()
     fun react () =
@@ -75,8 +97,10 @@ fun viewProc input output =
       in
         List.app onPoll (OS.IO.poll (pollers, NONE))
       end
+    val restore = noncanon ()
   in
     forever react
+    handle Stop => restore ()
   end
 
 fun main () =
